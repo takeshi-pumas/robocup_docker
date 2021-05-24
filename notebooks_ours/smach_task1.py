@@ -1,29 +1,6 @@
 #!/usr/bin/env python
 
 from utils_takeshi import *
-
-########## Functions for takeshi states ##########
-class Proto_state(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        rospy.loginfo('State : PROTO_STATE')
-
-        if self.tries==3:
-            self.tries=0 
-            return'tries'
-        if succ:
-            return 'succ'
-        else:
-            return 'failed'
-        global trans_hand
-        move_hand(1)
-        self.tries+=1
-        if self.tries==3:
-            self.tries=0 
-            return'tries'
-
 def segment_floor():
     image_data = rgbd.get_image()
     points_data = rgbd.get_points()
@@ -141,7 +118,21 @@ def publish_scene():
     add_object("table_small", [0.5, 0.01, 0.4], [0.1, 1.9, 0.61], [0.5, 0.5])
     add_object("table_tray", [0.65, 0.01, 0.7], [1.8, -0.65, 0.4], [0.5, 0.5])  
     
-    static_transformStamped=TransformStamped()
+    static_transformStamped = TransformStamped()
+
+    static_transformStamped.header.stamp = rospy.Time.now()
+    static_transformStamped.header.frame_id = "map"
+    static_transformStamped.child_frame_id = "Drawer_high" 
+    static_transformStamped.transform.translation.x = 0.14
+    static_transformStamped.transform.translation.y = -0.344
+    static_transformStamped.transform.translation.z = 0.57
+    static_transformStamped.transform.rotation.x = 0    
+    static_transformStamped.transform.rotation.y = 0    
+    static_transformStamped.transform.rotation.z = 0    
+    static_transformStamped.transform.rotation.w = 1    
+
+    tf_static_broadcaster.sendTransform(static_transformStamped)
+
 
       ##FIXING TF TO MAP ( ODOM REALLY)    
     static_transformStamped.header.stamp = rospy.Time.now()
@@ -273,6 +264,30 @@ def segment_table():
             print ('cX,cY',cX,cY)
     cents=np.asarray(cents)
     return (cents)
+
+
+########## Functions for takeshi states ##########
+class Proto_state(smach.State):
+    def __init__(self):
+        smach.State.__init__(self,outcomes=['succ','failed','tries'])
+        self.tries=0
+    def execute(self,userdata):
+        rospy.loginfo('State : PROTO_STATE')
+
+        if self.tries==3:
+            self.tries=0 
+            return'tries'
+        if succ:
+            return 'succ'
+        else:
+            return 'failed'
+        global trans_hand
+        move_hand(1)
+        self.tries+=1
+        if self.tries==3:
+            self.tries=0 
+            return'tries'
+
 
 ########## Clases derived from Takeshi_states, please only define takeshi_run() ##########
 
@@ -1071,7 +1086,7 @@ if __name__== '__main__':
         smach.StateMachine.add("SCAN_FLOOR",    Scan_floor(),   transitions = {'failed':'SCAN_FLOOR',   'succ':'PRE_FLOOR',     'tries':'SCAN_TABLE','change':'SCAN_TABLE2'}) 
         smach.StateMachine.add('PRE_FLOOR',     Pre_floor(),    transitions = {'failed':'PRE_FLOOR',    'succ': 'GRASP_FLOOR',  'tries':'SCAN_TABLE'},remapping={'counter_in':'sm_counter','counter_out':'sm_counter'}) 
         smach.StateMachine.add('PRE_DRAWER',     Pre_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'GRASP_DRAWER',  'tries':'END'}) 
-        smach.StateMachine.add('GRASP_DRAWER',     Grasp_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'END',  'tries':'INITIAL'}) 
+        smach.StateMachine.add('GRASP_DRAWER',     Grasp_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'POST_DRAWER',  'tries':'INITIAL'}) 
         smach.StateMachine.add('POST_DRAWER',     Post_drawer(),  transitions = {'failed':'GRASP_DRAWER',    'succ': 'INITIAL',  'tries':'END'}) 
         smach.StateMachine.add('GRASP_FLOOR',   Grasp_floor(),  transitions = {'failed':'SCAN_TABLE',  'succ': 'POST_FLOOR',   'tries':'INITIAL'}) 
         smach.StateMachine.add('POST_FLOOR',    Post_floor(),   transitions = {'failed':'GRASP_FLOOR',  'succ': 'GO_BOX',       'tries':'SCAN_FLOOR'}) 
