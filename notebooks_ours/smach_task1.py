@@ -1017,16 +1017,17 @@ class Post_drawer(smach.State):
     def execute(self,userdata):
         publish_scene()
         self.tries+=1
-        move_hand(0)
-
+       
 
         wb=whole_body.get_current_joint_values()
         wb[0]+= 0.3
         whole_body.go(wb)
         
         succ=move_hand(1)
+        
+        wb[0]+= 0.2
         wb[3]+= 0.3
-        rospy.sleep(.5)
+        
         
         
         if self.tries==3:
@@ -1061,7 +1062,7 @@ def init(node_name):
     static_transformStamped.child_frame_id = "Drawer_high" 
     static_transformStamped.transform.translation.x = 0.14
     static_transformStamped.transform.translation.y = -0.344
-    static_transformStamped.transform.translation.z = 0.57
+    static_transformStamped.transform.translation.z = 0.5
     static_transformStamped.transform.rotation.x = 0    
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
@@ -1087,7 +1088,7 @@ if __name__== '__main__':
         smach.StateMachine.add('PRE_FLOOR',     Pre_floor(),    transitions = {'failed':'PRE_FLOOR',    'succ': 'GRASP_FLOOR',  'tries':'SCAN_TABLE'},remapping={'counter_in':'sm_counter','counter_out':'sm_counter'}) 
         smach.StateMachine.add('PRE_DRAWER',     Pre_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'GRASP_DRAWER',  'tries':'END'}) 
         smach.StateMachine.add('GRASP_DRAWER',     Grasp_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'POST_DRAWER',  'tries':'INITIAL'}) 
-        smach.StateMachine.add('POST_DRAWER',     Post_drawer(),  transitions = {'failed':'GRASP_DRAWER',    'succ': 'INITIAL',  'tries':'END'}) 
+        smach.StateMachine.add('POST_DRAWER',     Post_drawer(),  transitions = {'failed':'GRASP_DRAWER',    'succ': 'END',  'tries':'END'}) 
         smach.StateMachine.add('GRASP_FLOOR',   Grasp_floor(),  transitions = {'failed':'SCAN_TABLE',  'succ': 'POST_FLOOR',   'tries':'INITIAL'}) 
         smach.StateMachine.add('POST_FLOOR',    Post_floor(),   transitions = {'failed':'GRASP_FLOOR',  'succ': 'GO_BOX',       'tries':'SCAN_FLOOR'}) 
         smach.StateMachine.add('GO_BOX',        Go_box(),       transitions = {'failed':'GO_BOX',       'succ': 'DELIVER',      'tries':'INITIAL'})
