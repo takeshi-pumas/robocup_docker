@@ -125,7 +125,7 @@ def publish_scene():
     static_transformStamped.child_frame_id = "Drawer_high" 
     static_transformStamped.transform.translation.x = 0.14
     static_transformStamped.transform.translation.y = -0.344
-    static_transformStamped.transform.translation.z = 0.57
+    static_transformStamped.transform.translation.z = 0.55
     static_transformStamped.transform.rotation.x = 0    
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
@@ -1026,7 +1026,8 @@ class Post_drawer(smach.State):
         succ=move_hand(1)
         
         wb[0]+= 0.2
-        wb[3]+= 0.3
+        wb[3]+= 0.12
+        succ=whole_body.go(wb)
         
         
         
@@ -1055,20 +1056,19 @@ def init(node_name):
     rgbd = RGBD()
 
      ##FIXING TF TO MAP ( ODOM REALLY)    
-    static_transformStamped = TransformStamped()
-
-    static_transformStamped.header.stamp = rospy.Time.now()
-    static_transformStamped.header.frame_id = "map"
-    static_transformStamped.child_frame_id = "Drawer_high" 
-    static_transformStamped.transform.translation.x = 0.14
-    static_transformStamped.transform.translation.y = -0.344
-    static_transformStamped.transform.translation.z = 0.5
-    static_transformStamped.transform.rotation.x = 0    
-    static_transformStamped.transform.rotation.y = 0    
-    static_transformStamped.transform.rotation.z = 0    
-    static_transformStamped.transform.rotation.w = 1    
-
-    tf_static_broadcaster.sendTransform(static_transformStamped)
+#    static_transformStamped = TransformStamped()
+#    static_transformStamped.header.stamp = rospy.Time.now()
+#    static_transformStamped.header.frame_id = "map"
+#    static_transformStamped.child_frame_id = "Drawer_high" 
+#    static_transformStamped.transform.translation.x = 0.14
+#    static_transformStamped.transform.translation.y = -0.344
+#    static_transformStamped.transform.translation.z = 0.5
+#    static_transformStamped.transform.rotation.x = 0    
+#    static_transformStamped.transform.rotation.y = 0    
+#    static_transformStamped.transform.rotation.z = 0    
+#    static_transformStamped.transform.rotation.w = 1    
+#
+#    tf_static_broadcaster.sendTransform(static_transformStamped)
 
     
     
