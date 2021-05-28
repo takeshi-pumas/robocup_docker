@@ -177,7 +177,7 @@ def get_relative_coordinate(parent, child):
 whole_body = moveit_commander.MoveGroupCommander("whole_body_light")
 # whole_body = moveit_commander.MoveGroupCommander("whole_body_weighted")
 whole_body.allow_replanning(True)
-whole_body.set_workspace([-3.0, -3.0, 3.0, 3.0])
+whole_body.set_workspace([-10.0, -10.0, 10.0, 10.0])
 
 
 def move_wholebody_ik(x, y, z, roll, pitch, yaw):
