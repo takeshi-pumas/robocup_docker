@@ -5,7 +5,8 @@ import moveit_msgs.msg
 #from gazebo_ros import gazebo_interface
 import smach
 import matplotlib.pyplot as plt
-
+from sklearn.decomposition import PCA
+import math as m
 
 ##### Publishers #####
 scene_pub = rospy.Publisher('planning_scene', moveit_msgs.msg.PlanningScene, queue_size = 5)
@@ -26,17 +27,17 @@ arm_grasp_from_above = [0.19263830140116414,
  -0.9939144210462025,
  -0.17365421548386273,
  0.0]
-arm_grasp_from_above_table = [0.41349380130577407,
- -1.671584191489468,
- -0.02774372779356371,
- -1.5952436225825641,
- 0.22362492457833927,
+arm_grasp_from_above_table = [0.6038188787042562,
+ -1.5712036013833837,
+ -0.02739401124993579,
+ -1.5706216522317993,
+ 0.00020861214307910103,
  0.0]
 arm_grasp_table=[0.41349380130577407,
  -1.671584191489468,
  -0.02774372779356371,
  0.0,
- 0.22362492457833927,
+ 0.0,
  0.0]
 arm_grasp_floor = [-1.5151551103007697e-05,
  -2.4,
@@ -75,39 +76,34 @@ grasped=[0.12814103131904275,
  0.13252877558892262,
  -0.30672794406396453]
 
+def rot_to_euler(R):
+    import sys
+    tol = sys.float_info.epsilon * 10
 
+    if abs(R.item(0,0))< tol and abs(R.item(1,0)) < tol:
+       eul1 = 0
+       eul2 = m.atan2(-R.item(2,0), R.item(0,0))
+       eul3 = m.atan2(-R.item(1,2), R.item(1,1))
+    else:   
+       eul1 = m.atan2(R.item(1,0),R.item(0,0))
+       sp = m.sin(eul1)
+       cp = m.cos(eul1)
+       eul2 = m.atan2(-R.item(2,0),cp*R.item(0,0)+sp*R.item(1,0))
+       eul3 = m.atan2(sp*R.item(0,2)-cp*R.item(1,2),cp*R.item(1,1)-sp*R.item(0,1))
 
-########## Base Class for takeshi state machine ##########
-class Takeshi_states(smach.State):
-    def __init__(self):
-        smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
-        self.tries = 1
-        self.max_tries = 5
-    
-    #This function must be overwritten
-    def takeshi_run(self):
-        print("Takeshi execute")
-        success = True        
-        return success
+    return np.asarray((eul1,eul2,eul3))
+def pca_xyz(xyz):
+    quats=[]
+    for i in range( len(xyz)):
+        pca= PCA(n_components=3).fit(xyz[i])
+        vec0= pca.components_[0,:]
+        vec1= pca.components_[1,:]
+        vec2= pca.components_[2,:]
+        R=pca.components_
+        euler=rot_to_euler(R)
+        quats.append(tf.transformations.quaternion_from_euler(euler[0],euler[1],euler[2]))
+    return quats
 
-    def execute(self, userdata):
-        #rospy.loginfo('STATE : INITIAL')
-        print("Excecuting Takeshi State: " + self.__class__.__name__)
-        print('Try', self.tries, 'of 5 attempts')
-        succ = self.takeshi_run()
-        if succ: 
-            print('success')            
-            return 'succ'
-        else:
-            print('failed')
-            self.tries += 1
-            if self.tries > self.max_tries:
-                return 'tries'
-            else:
-                return 'failed'
-
-
-########## Util Functions ##########
 
 def cart2spher(x,y,z):
     ro= np.sqrt(x**2+y**2+z**2)
@@ -126,72 +122,3 @@ def point_2D_3D(points_data, px_y, px_x):
     ##px pixels /2D world  P1 3D world
     P = np.asarray((points_data[px_y, px_x]['x'], points_data[px_y, px_x]['y'], points_data[px_y, px_x]['z']))
     return P
-def seg_floor(image,points_data,lower=200,upper=50000):
-       # image_data=rgbd.get_image()
-       # points_data = rgbd.get_points()
-
-
-        ##px pixels /2D world  P1 3D world
-        px_y,px_x=-1,-200
-        P1= np.asarray((points_data[px_y,px_x]['x'],points_data[px_y,px_x]['y'],points_data[px_y,px_x]['z'] ))
-        px_y,px_x=-1,200
-        P2= np.asarray((points_data[px_y,px_x]['x'],points_data[px_y,px_x]['y'],points_data[px_y,px_x]['z'] ))
-        px_y,px_x=-150,320
-        P3= np.asarray((points_data[px_y,px_x]['x'],points_data[px_y,px_x]['y'],points_data[px_y,px_x]['z'] ))
-        #      
-
-        V1 =P1 - P2
-        V2= P3-P2
-        nx,ny,nz=np.cross(V2,V1)
-        print('look at the phi angle  in normal vector', np.rad2deg(cart2spher(nx,ny,nz))[2]-90)
-        trans , rot = listener.lookupTransform('/map', '/head_rgbd_sensor_gazebo_frame', rospy.Time(0))
-        euler=tf.transformations.euler_from_quaternion(rot)
-        print(   np.rad2deg(euler)[1],'if this degree is not the same as head tilt plane was not found')
-        
-        mask=np.zeros((image_data.shape))
-        plane_mask=np.zeros((image_data.shape[0],image_data.shape[1]))
-        mask[:,:,0]=points_data['x'] - P1[0]
-        mask[:,:,1]=points_data['y'] - P1[1]
-        mask[:,:,2]=points_data['z'] - P1[2]
-        for i in range (image_data.shape[0]):
-            for j in range (image_data.shape[1]):
-                plane_mask[i,j]=-np.dot(np.asarray((nx,ny,nz,)),mask[i,j])
-        plane_mask=plane_mask-np.min(plane_mask)
-        plane_mask=plane_mask*256/np.max(plane_mask)
-        plane_mask.astype('uint8')
-
-        ret,thresh = cv2.threshold(plane_mask,3,255,0)
-
-        cv2_img=plane_mask.astype('uint8')
-        img=plane_mask.astype('uint8')
-        _,contours, hierarchy = cv2.findContours(thresh.astype('uint8'),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        i=0
-        cents=[]
-        for i, contour in enumerate(contours):
-            area = cv2.contourArea(contour)
-            
-            if area > lower and area < upper :
-                #print('contour',i,'area',area)
-                
-                boundRect = cv2.boundingRect(contour)
-                #just for drawing rect, dont waste too much time on this
-                img=cv2.rectangle(img,(boundRect[0], boundRect[1]),(boundRect[0]+boundRect[2], boundRect[1]+boundRect[3]), (255,0,0), 2)
-                # calculate moments for each contour
-                xyz=[]
-                
-                
-                for jy in range (boundRect[0], boundRect[0]+boundRect[2]):
-                    for ix in range(boundRect[1], boundRect[1]+boundRect[3]):
-                        xyz.append(np.asarray((points_data['x'][ix,jy],points_data['y'][ix,jy],points_data['z'][ix,jy])))
-                xyz=np.asarray(xyz)
-                cent=xyz.mean(axis=0)
-                cents.append(cent)
-                M = cv2.moments(contour)
-                # calculate x,y coordinate of center
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                cv2.circle(img, (cX, cY), 5, (255, 255, 255), -1)
-                cv2.putText(img, "centroid_"+str(i)+"_"+str(cX)+','+str(cY)    ,    (cX - 25, cY - 25)   ,cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-        cents=np.asarray(cents)
-        plt.imshow(img)
-        return cents
