@@ -315,7 +315,7 @@ def get_object_list():
     return object_list
 
 
-def put_object(name, x, y, z):
+def put_object(name, x, y, z,Y=0):
     u"""Gazeboに物体を出現させる関数"""
 
     cmd = "rosrun gazebo_ros spawn_model -database " \
@@ -323,7 +323,8 @@ def put_object(name, x, y, z):
           + " -sdf -model " + str(name) \
           + " -x " + str(y - 2.1) + \
           " -y " + str(-x + 1.2) \
-          + " -z " + str(z)
+          + " -z " + str(z)\
+          + " -Y " + str(Y)
     subprocess.call(cmd.split())
 
 
