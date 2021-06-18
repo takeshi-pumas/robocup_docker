@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<world name = "robocup2021">
+	<category name = "Food" place =  "Long_Table_A">
+		<destinations>
+			<deposit>Tray_A</deposit>
+			<deposit>Tray_B</deposit>
+		</destinations>
+		<objects>
+			<object>002_master_chef_can</object>
+			<object>003_cracker_box</object>
+			<object>004_sugar_box</object>
+			<object>005_tomato_soup_can</object>
+			<object>006_mustard_bottle</object>
+			<object>007_tuna_fish_can</object>
+			<object>008_pudding_box</object>
+			<object>009_gelatin_box</object>
+			<object>010_potted_meat_can</object>
+			<object>011_banana</object>
+			<object>012_strawberry</object>
+			<object>013_apple</object>
+			<object>014_lemon</object>
+			<object>015_peach</object>
+			<object>016_pear</object>
+			<object>017_orange</object>
+			<object>018_plum</object>
+		</objects>
+	</category>
+
+	<category name = "Kitchen" place =  "Long_Table_A">
+		<destinations>
+			<deposit>Container_A</deposit>			
+		</destinations>
+		<objects>			
+			<object>019_pitcher_base</object>
+			<object>021_bleach_cleanser</object>
+			<object>022_windex_bottle</object>
+			<object>024_bowl</object>
+			<object>025_mug</object>
+			<object>026_sponge</object>    
+			<object>029_plate</object> 
+			<object>030_fork</object>
+			<object>031_spoon</object>   
+			<object>033_spatula</object>  		
+		</objects>
+	</category>
+
+	<category name = "Shape" place =  "Drawer">
+		<destinations>
+			<deposit>Drawer_left</deposit>			
+		</destinations>
+		<objects>						
+			<object>053_mini_soccer_ball</object>
+			<object>054_softball</object>  
+			<object>055_baseball</object>
+			<object>056_tennis_ball</object>
+			<object>057_racquetball</object>
+			<object>058_golf_ball</object>
+			<object>059_chain</object>
+			<object>061_foam_brick</object>
+			<object>062_dice</object>
+			<object>063-a_marbles</object>
+			<object>063-b_marbles</object>
+			<object>065-a_cups</object>
+			<object>065-b_cups</object>
+			<object>065-c_cups</object>
+			<object>065-d_cups</object>
+			<object>065-e_cups</object>
+			<object>065-f_cups</object>
+			<object>065-g_cups</object>
+			<object>065-h_cups</object>
+			<object>065-i_cups</object>
+			<object>065-j_cups</object> 		
+		</objects>
+	</category>
+
+	<category name = "Task" place =  "Bin_A">
+		<destinations>
+			<deposit>Bin_A</deposit>			
+		</destinations>
+		<objects>						
+			<object>070-a_colored_wood_blocks</object>
+			<object>070-b_colored_wood_blocks</object>
+			<object>071_nine_hole_peg_test</object>
+			<object>072-a_toy_airplane</object>
+			<object>072-b_toy_airplane</object>
+			<object>072-c_toy_airplane</object>
+			<object>072-d_toy_airplane</object>
+			<object>072-e_toy_airplane</object>
+			<object>073-a_lego_duplo</object>
+			<object>073-b_lego_duplo</object> 
+			<object>073-c_lego_duplo</object> 
+			<object>073-d_lego_duplo</object> 
+			<object>073-e_lego_duplo</object> 
+			<object>073-f_lego_duplo</object> 
+			<object>073-g_lego_duplo</object> 
+			<object>077_rubiks_cube</object>
+		</objects>
+	</category>
+
+	<category name = "Tools" place =  "Drawer">
+		<destinations>
+			<deposit>Drawer_top</deposit>			
+			<deposit>Drawer_bottom</deposit>
+		</destinations>
+		<objects>						
+			<object>040_large_marker</object>  
+			<object>050_medium_clamp</object>
+			<object>051_large_clamp</object>
+			<object>052_extra_large_clamp</object> 		
+		</objects>
+	</category>
+
+	<category name = "Discarded" place =  "None">
+		<destinations>
+			<deposit>None</deposit>						
+		</destinations>
+		<objects>									
+			<object>027_skillet</object>
+			<object>028_skillet_lid</object>
+			<object>032_knife</object>
+			<object>035_power_drill</object>    
+			<object>036_wood_block</object>
+			<object>037_scissors</object>
+			<object>038_padlock</object>
+			<object>042_adjustable_wrench</object>
+			<object>043_phillips_srewdriver</object>
+			<object>044_flat_srewdriver</object>
+			<object>048_hammer</object>
+		</objects>
+	</category>
+
+</world>

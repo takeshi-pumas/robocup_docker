@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import math as m
 import sys
+from xml.dom import minidom
+
 
 ##### Publishers #####
 scene_pub = rospy.Publisher('planning_scene', moveit_msgs.msg.PlanningScene, queue_size = 5)
@@ -20,7 +22,17 @@ kl_table2  = [0 , 1.2, 90]
 kl_drawers = [0.06, 0.5, -90]
 
 
-##### ARM #####
+##Whole BOdy
+wb_pre_table2_above=[1.084975040241123,
+ -0.04307911400795569,
+ 1.6411492988890584,
+ 0.6298913727372194,
+ -1.675184695826223,
+ -0.027761353326655414,
+ -1.5948988328043532,
+ 0.22356862963362012,
+ 0.0]
+### ARM #####
 arm_grasp_from_above = [0.19263830140116414,
  -2.2668981568652917,
  -0.007358947463759424,
@@ -64,6 +76,35 @@ arm_high_drawer = [0.2539946870715912,
  1.5763667194117463,
  0.0]
 
+arm_grasp_shelf_hl = [0.20,
+ -0.4,
+ 0.0,
+ -1.3,
+ 0.0,
+ 0.0]
+
+arm_ready_to_deliver = [0.43999320441056991,
+ -0.4729690540086997,
+ 0.19361475012179108,
+ -1.5269847787383313,
+ -0.009753879176134461,
+ 0.0]
+
+arm_ready_to_dep_cont=[0.02999320441056991,
+ -0.5729690540086997,
+ 0.09361475012179108,
+ -1.5269847787383313,
+ -0.009753879176134461,
+ 0.0]
+
+arm_ready_to_dep_tray=[0.0,
+ -0.68,
+ 0.09361475012179108,
+ -1.5269847787383313,
+ -0.009753879176134461,
+ 0.0]
+
+
 ##### GRASP 
 ungrasped = [-0.00047048998088961014,
  -0.03874743486886725,
@@ -75,6 +116,8 @@ grasped = [0.12814103131904275,
  0.21972794406396456,
  0.13252877558892262,
  -0.30672794406396453]
+grasp_above_quat=[0.9187459 , 0.39460334, 0.00316647, 0.01357017]
+grasp_table_quat=[0.26902404, -0.49059563,  0.29007591,  0.77640065]
 
 def rot_to_euler(R):    
     tol = sys.float_info.epsilon * 10
@@ -123,3 +166,33 @@ def point_2D_3D(points_data, px_y, px_x):
 def set_points(points_data, px_y, px_x):
     P = np.asarray((points_data[px_y, px_x]['x'], points_data[px_y, px_x]['y'], points_data[px_y, px_x]['z']))
     return P
+
+class ObjCatDep:
+    
+    def __init__(self):
+        self.categories = []
+
+        #File with definition of objects, categories, etc.
+        file = minidom.parse("objects-category-deposit.xml")
+        #print file.toxml()
+        cat = file.getElementsByTagName("category")
+        #print "Categories  " + str(len(cat))
+                
+        for category in cat:    
+            deposits = []
+            objs = []
+            name = str(category.attributes["name"].value)
+            place = str(category.attributes["place"].value)         
+            dep = category.getElementsByTagName("deposit")      
+            for deposit in dep:                 
+                deposits.append(str(deposit.firstChild.data))
+            obj = category.getElementsByTagName("object")   
+            for obje in obj:                
+                objs.append(str(obje.firstChild.data))
+            newCategory = {"category" : name, "place" : place, "deposits" : deposits, "objects" : objs}
+            self.categories.append(newCategory)
+
+    def find_object(self, obj_name):
+        for category in self.categories:
+            if obj_name in category["objects"]:
+                return {"object": obj_name, "category" : category["category"], "place" : category["place"], "deposits" : category["deposits"]}
