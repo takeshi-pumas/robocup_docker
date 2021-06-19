@@ -262,8 +262,8 @@ def publish_scene():
     add_transform("Tray_B", [1.97, -0.59, 0.4], [0, 0, 0, 1])
     add_transform("Container_A", [1.11, -0.59, 0.4], [0, 0, 0, 1])
     add_transform("Container_B", [1.41, -0.59, 0.4], [0, 0, 0, 1])
-    add_transform("Bin_A", [2.4, -0.59, 0.32], [0, 0, 0, 1])
-    add_transform("Bin_B", [2.9, -0.59, 0.32], [0, 0, 0, 1])
+    add_transform("Bin_A", [2.3, -0.5, 0.5], [0, 0, 0, 1]) 
+    add_transform("Bin_B", [2.9, -0.5, 0.5], [0, 0, 0, 1])
 
     return True
 
@@ -993,16 +993,17 @@ class Deliver(smach.State):
        
         arm.set_joint_value_target(arm_ready_to_place)
         arm.go()
-        trans_hand, rot_hand = listener.lookupTransform('Box1', '/hand_palm_link', rospy.Time(0))
-        print ('hand wrt box1', trans_hand)
+        
+        trans_hand, rot_hand = listener.lookupTransform('Bin_A', '/hand_palm_link', rospy.Time(0))
+        print ('hand wrt box1...now called Bin A', trans_hand)
         arm.set_joint_value_target(arm_ready_to_place)
         arm.go()
         wb = whole_body.get_current_joint_values()
         wb[0] += -trans_hand[1]
         wb[1] += -trans_hand[0]
         succ = whole_body.go(wb)
-        trans_hand, rot_hand = listener.lookupTransform('Box1','/hand_palm_link', rospy.Time(0))
-        print ('hand wrt box1', trans_hand)
+        trans_hand, rot_hand = listener.lookupTransform('Bin_A','/hand_palm_link', rospy.Time(0))
+        print ('hand wrt box1 ... now called Bin_A', trans_hand)
         move_hand(1)
         #move_hand(1)
         

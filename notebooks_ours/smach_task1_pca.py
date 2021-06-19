@@ -17,7 +17,70 @@ class Proto_state(smach.State):
             return 'succ'
         else:
             return 'failed'
+def add_transform(child, trans, rot, parent="map"):
+    static_transformStamped = TransformStamped()
+    static_transformStamped.header.stamp = rospy.Time.now()
+    static_transformStamped.header.frame_id = parent
+    static_transformStamped.child_frame_id = child
+    static_transformStamped.transform.translation.x = trans[0]
+    static_transformStamped.transform.translation.y = trans[1]
+    static_transformStamped.transform.translation.z = trans[2]
+    static_transformStamped.transform.rotation.x = rot[0]    
+    static_transformStamped.transform.rotation.y = rot[1]    
+    static_transformStamped.transform.rotation.z = rot[2]    
+    static_transformStamped.transform.rotation.w = rot[3]    
+    tf_static_broadcaster.sendTransform(static_transformStamped)
 
+def lineup_table():
+    
+    cv2_img=rgbd.get_image()
+    img=cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
+    img=cv2.Canny(img,80,200)
+    lines = cv2.HoughLines(img,1,np.pi/180,150)
+    first=True
+    if len(lines) ==0:
+        return False
+    for line in lines:
+        for rho,theta in line:
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))
+            y1 = int(y0 + 1000*(a))
+            x2 = int(x0 - 1000*(-b))
+            y2 = int(y0 - 1000*(a))
+            size=12
+            if first:
+                size=52
+                first=False
+
+            img=cv2.line(img,(x1,y1),(x2,y2),(255,255,255),size)
+
+    #
+    
+    wb=whole_body.get_current_joint_values()
+    wb[2]+=-(lines[0,0,1]-.5*np.pi)
+    if (np.isclose(lines[0,0,1], [1.57], atol=0.3)):
+        succ=whole_body.go(wb)
+    
+    lines=np.asarray(lines)
+    l=len(lines)
+    lines=lines.ravel().reshape(l,2)
+    table_limit_px=[]
+    if l==0 or l==1:
+        print ('no lines')
+        return False
+    else:
+        for line in lines :
+            if (np.isclose(line[1], [1.57], atol=0.1)):
+                table_limit_px.append(line[0])
+        table_region=np.asarray([np.min(table_limit_px), np.max(table_limit_px)])
+        print (table_region)
+        
+        return table_region 
+    
+        
 def rot_to_euler(R):
     import sys
     tol = sys.float_info.epsilon * 10
@@ -47,7 +110,7 @@ def pca_xyz(xyz):
     return quats
 
 
-def seg_pca(): 
+def seg_pca(lower=2000,higher=50000,reg_ly=0,reg_hy=1000): 
     image= rgbd.get_h_image()
     points_data= rgbd.get_points()
     values=image.reshape((-1,3))
@@ -69,40 +132,46 @@ def seg_pca():
     cents=[]
     points=[]
     for i, contour in enumerate(contours):
+        
         area = cv2.contourArea(contour)
 
-        if area > 2000 and area < 50000 :
-
-
+        if area > lower and area < higher :
+            M = cv2.moments(contour)
+            # calculate x,y coordinate of center
+            cX = int(M["m10"] / M["m00"])
+            cY = int(M["m01"] / M["m00"])
+            
+    
             boundRect = cv2.boundingRect(contour)
             #just for drawing rect, dont waste too much time on this
 
             img=cv2.rectangle(img,(boundRect[0], boundRect[1]),(boundRect[0]+boundRect[2], boundRect[1]+boundRect[3]), (0,0,0), 2)
             # calculate moments for each contour
-            xyz=[]
+            if (cY > reg_ly and cY < reg_hy  ):
+                
+                cv2.circle(img, (cX, cY), 5, (255, 255, 255), -1)
+                cv2.putText(img, "centroid_"+str(i)+"_"+str(cX)+','+str(cY)    ,    (cX - 25, cY - 25)   ,cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+                print ('cX,cY',cX,cY)
+                xyz=[]
 
 
-            for jy in range (boundRect[0], boundRect[0]+boundRect[2]):
-                for ix in range(boundRect[1], boundRect[1]+boundRect[3]):
-                    aux=(np.asarray((points_data['x'][ix,jy],points_data['y'][ix,jy],points_data['z'][ix,jy])))
-                    if np.isnan(aux[0]) or np.isnan(aux[1]) or np.isnan(aux[2]):
-                        'reject point'
-                    else:
-                        xyz.append(aux)
+                for jy in range (boundRect[0], boundRect[0]+boundRect[2]):
+                    for ix in range(boundRect[1], boundRect[1]+boundRect[3]):
+                        aux=(np.asarray((points_data['x'][ix,jy],points_data['y'][ix,jy],points_data['z'][ix,jy])))
+                        if np.isnan(aux[0]) or np.isnan(aux[1]) or np.isnan(aux[2]):
+                            'reject point'
+                        else:
+                            xyz.append(aux)
+
+                xyz=np.asarray(xyz)
+                cent=xyz.mean(axis=0)
+                cents.append(cent)
+                print (cent)
+                points.append(xyz)
+            else:
+                print ('cent out of region... rejected')
             
-            xyz=np.asarray(xyz)
-            cent=xyz.mean(axis=0)
-            cents.append(cent)
-            points.append(xyz)
-            M = cv2.moments(contour)
-            # calculate x,y coordinate of center
-            cX = int(M["m10"] / M["m00"])
-            cY = int(M["m01"] / M["m00"])
-            cv2.circle(img, (cX, cY), 5, (255, 255, 255), -1)
-            cv2.putText(img, "centroid_"+str(i)+"_"+str(cX)+','+str(cY)    ,    (cX - 25, cY - 25)   ,cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
-            print ('cX,cY',cX,cY)
     cents=np.asarray(cents)
-
     ### returns centroids found and a group of 3d coordinates that conform the centroid
     return(cents,np.asarray(points))
 
@@ -328,13 +397,16 @@ def publish_scene():
     add_object("table_small_legs1",[.01,.6,.2], [-0.3,1.75,0.3],      [0.5,0,0, 0.5])
     add_object("table_small_legs2",[.01,.6,.2], [0.1,1.75,0.3], [0.5,0,0 ,0.5])
     add_object("table_tray", [0.65, 0.01, 0.7], [1.8, -0.65, 0.4], [0.5,0,0, 0.5])
+    add_object("containers", [0.3, 0.3, 0.3], [1.4, -0.65, 0.4], [0.5,0,0, 0.5])
     add_object("big_wall" , [6.0, 0.2, 0.2], [3.2,  2.0, 0.0],  [0,0.0,0.5 ,0.5])
     add_object("mid_wall" , [4.0, 0.2, 0.2], [0.1,  2.1, 0.0],  [0,0.0,0.0 ,1/np.pi])
     add_object("door_wall" , [5.0, 0.2, 0.2], [-0.8, 2.8, 0.0],  [0,0.0,0.5 ,0.5     ])
     add_object("close_wall", [4.0, 0.2, 0.2], [1.1, -0.5, 0.0],  [0,0.0,0.0 ,1/np.pi])
     add_object("far_wall",   [4.0, 0.2, 0.2], [1.1, 5.0, 0.0],  [0,0.0,0.0 ,1/np.pi])
     
-     
+    add_transform("Tray_A", [1.665, -0.59, 0.4], [0, 0, 0, 1])
+    add_transform("Tray_B", [1.97, -0.59, 0.4], [0, 0, 0, 1])
+
     static_transformStamped=TransformStamped()
 
       ##FIXING TF TO MAP ( ODOM REALLY)    
@@ -715,14 +787,11 @@ class Go_box(smach.State):
         if self.tries==5:
             self.tries=0 
             return 'tries'
-        goal_x, goal_y, goal_yaw =  kl_tray #Known location tray 1
-        a = gripper.get_current_joint_values()
-        #if np.linalg.norm(a - np.asarray(grasped)) > (np.linalg.norm(a - np.asarray(ungrasped))):
-        #    print ('object might have fallen')
-        #    return'tries'
+        #goal_x, goal_y, goal_yaw =  kl_tray #Known location tray 1
+        
+        succ=whole_body.go(wb_place_tray_A)
 
-
-        succ = move_base_goal(goal_x, goal_y+0.35 , -90)
+        #succ = move_base_goal(goal_x, goal_y+0.35 , -90)
         publish_scene()
         if succ:
             self.tries=0 
@@ -744,45 +813,27 @@ class Deliver(smach.State):
         if self.tries==5:
             self.tries=0 
             return 'tries'
-       
+        """
+                             trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'Tray_A',rospy.Time(0))
+                             hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+                             print(trans_hand ,hand_euler)
+                             wb= whole_body.get_current_joint_values()
+                             wb[0]+= -trans_hand[2]
+                             wb[1]+= -trans_hand[1]
+                     
+                             wb[3]+= trans_hand[0]+.05
+                             whole_body.go(wb)
+        """
+        trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'Tray_A',rospy.Time(0))
+        hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+        print(trans_hand ,hand_euler)
+        wb= whole_body.get_current_joint_values()
+        wb[0]+= -trans_hand[2]
+        wb[1]+= -trans_hand[1]
 
-        arm.set_joint_value_target(arm_ready_to_place)
-        arm.go()
-
-        trans_hand, rot_hand = listener.lookupTransform('Box1','/hand_palm_link', rospy.Time(0))
-        print ('hand wrt box1',trans_hand)
-        arm.set_joint_value_target(arm_ready_to_place)
-        arm.go()
-        wb = whole_body.get_current_joint_values()
-        wb[0] += -trans_hand[1]
-        wb[1] += -trans_hand[0]
+        wb[3]+= trans_hand[0]+.05
         succ=whole_body.go(wb)
-        trans_hand, rot_hand = listener.lookupTransform('Box1','/hand_palm_link', rospy.Time(0))
-        print ('hand wrt box1',trans_hand)
         move_hand(1)
-        """wb = whole_body.get_current_joint_values()
-                                wb[0] += trans_hand[2]
-                                wb[1] += trans_hand[1]
-                                try:
-                                    succ = whole_body.go(wb)
-                                except MoveItCommanderException:
-                                    return  'failed'
-                        
-                                
-                                succ = whole_body.go(wb)
-                                trans_hand, rot_hand = listener.lookupTransform('/hand_palm_link', 'Box1', rospy.Time(0))
-                                print ('hand wrt box1',trans_hand)
-                                wb = whole_body.get_current_joint_values()
-                                wb[0] += -trans_hand[2]
-                                wb[1] += -trans_hand[1]
-                                try:
-                                    succ = whole_body.go(wb)
-                                except MoveItCommanderException:
-                                    return  'failed'"""
-            
-        
-        move_hand(1)
-        
         if succ:
             wb = whole_body.get_current_joint_values()
             wb[0] += 0.45
@@ -796,8 +847,38 @@ class Deliver(smach.State):
             return 'succ'
         else:
             return 'failed'
-
-
+    """   arm.set_joint_value_target(arm_ready_to_place)
+                       arm.go()
+               
+                       trans_hand, rot_hand = listener.lookupTransform('Box1','/hand_palm_link', rospy.Time(0))
+                       print ('hand wrt box1',trans_hand)
+                       arm.set_joint_value_target(arm_ready_to_place)
+                       arm.go()
+                       wb = whole_body.get_current_joint_values()
+                       wb[0] += -trans_hand[1]
+                       wb[1] += -trans_hand[0]
+                       succ=whole_body.go(wb)
+                       trans_hand, rot_hand = listener.lookupTransform('Box1','/hand_palm_link', rospy.Time(0))
+                       print ('hand wrt box1',trans_hand)
+                       move_hand(1)
+                   
+                       move_hand(1)
+                       
+                       if succ:
+                           wb = whole_body.get_current_joint_values()
+                           wb[0] += 0.45
+                           whole_body.set_joint_value_target(wb)
+                           succ=whole_body.go()
+                           move_hand(0)
+                           arm.set_named_target('go')
+                           arm.go()
+                           head.set_named_target('neutral')
+                           head.go()
+                           return 'succ'
+                       else:
+                           return 'failed'
+               
+    """
 
 
 
@@ -846,35 +927,7 @@ class Scan_table(smach.State):
             self.tries=0 
             return 'succ'
         
-class Scan_table2(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        self.tries+=1
-        if self.tries==3:
-            self.tries=0 
-            return'tries'
-    
-        global cents, rot, trans
-       
-        goal_x , goal_y, goal_yaw = kl_table2
-        succ = move_base_goal(goal_x+.1*self.tries, goal_y , goal_yaw)      
-        head_val = head.get_current_joint_values()
-        head_val[0] = np.deg2rad(0)
-        head_val[1] = np.deg2rad(-30)        
-        head.go(head_val)
-        
-        trans, rot = listener.lookupTransform('/map', '/head_rgbd_sensor_gazebo_frame', rospy.Time(0))
-        euler = tf.transformations.euler_from_quaternion(rot)        
-        cents = segment_table2(self.tries)
-        if (len (cents) ==0):
-            return 'failed'                                          
-        else:
-            static_tf_publish(cents)
-            print("cents  wrt head" +str(cents))
-            self.tries=0
-            return 'succ'
+
         
 
 
@@ -926,54 +979,7 @@ class Pre_table(smach.State):
             return 'succ'
         else:
             return 'failed'
-class Pre_table2(smach.State):
-    def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        self.tries+=1
-        if self.tries==3:
-            self.tries=0 
-            return'tries'
-    
-        global closest_cent 
-        global cents              
-    
-        trans, rot = listener.lookupTransform('/map', '/head_rgbd_sensor_gazebo_frame', rospy.Time(0))
-        euler = tf.transformations.euler_from_quaternion(rot)
-        print("centroids wrt head " +str(cents))
-        publish_scene()
-        cents= segment_table2(2)
-        trans_cents = []        
-        for i, cent in enumerate(cents):
-            trans_map, _ = listener.lookupTransform('/map', 'static' + str(i), rospy.Time(0))
-            trans_cents.append(trans_map)
-        
-        print("centroids wrt map" + str(trans_cents))
-        if trans_cents[0]> .3:
-            print('not part of table 2')
-        if len(trans_cents) !=0:
 
-            np.linalg.norm(np.asarray(trans_cents) - trans , axis = 1)
-            closest_cent = np.argmin(np.linalg.norm(np.asarray(trans_cents) - trans , axis = 1))
-            print("Closest Cent " + str(closest_cent))
-            publish_scene()
-            
-            move_hand(1)
-            arm.set_joint_value_target(arm_grasp_table)
-            succ=arm.go()
-            if succ:
-                return 'succ'
-            else:
-                return 'failed'
-
-            
-        else: 
-            print("no object found")
-            return 'failed'
-        
-        
-        
         
         
         
@@ -1053,45 +1059,274 @@ class Post_table(smach.State):
             head.go()
             return 'succ'
 
-class Pre_table2(smach.State):
+class Scan_table2(smach.State):
+
     def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries'])
-        self.tries=0
-    def execute(self,userdata):
-        self.tries+=1
-        if self.tries==3:
-            self.tries=0 
+        smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
+        self.tries = 0
+
+    def execute(self, userdata):
+        self.tries += 1
+        if self.tries == 3:
+            self.tries = 0 
             return'tries'
     
-        global closest_cent 
-        global cents              
-
-        print("centroids wrt head " +str(cents))
-        publish_scene()
-
-        trans_cents = []        
-        for i, cent in enumerate(cents):
-            trans_map, _ = listener.lookupTransform('/map', 'static' + str(i), rospy.Time(0))
-            trans_cents.append(trans_map)
         
+        global cents, rot, trans,  quats , closest_cent
+        publish_scene()
+        
+        arm.set_named_target('go')
+        arm.go()
+        head.set_named_target('neutral')
+        head.go()
+        goal_x , goal_y, goal_yaw = kl_table2
+        succ = move_base_goal(goal_x-.2, goal_y-.1 , goal_yaw+90)      
+
+        head.set_named_target('neutral')
+        head.go()
+
+        arm.set_joint_value_target(arm_grasp_table)
+        arm.go()
+        wb= whole_body.get_current_joint_values()
+        wb[3]+=.1
+        succ=whole_body.go(wb)
+
+
+        head_val=head.get_current_joint_values()
+        head_val[0]=np.deg2rad(-90)
+        head_val[1]=np.deg2rad(-45)
+        head.go(head_val)
+
+        table_region=lineup_table()
+        
+        aux=0
+        while abs(table_region[1]-table_region[0]) < 100 :
+            aux+=1
+            if aux== 5:
+                break
+                #return 'failed'
+            table_region=lineup_table()
+            
+
+
+        publish_scene()
+        trans , rot = listener.lookupTransform('/map', '/head_rgbd_sensor_gazebo_frame', rospy.Time(0))
+        cents, xyz = seg_pca(2000,30000,table_region[0],table_region[1])
+        quats=pca_xyz(xyz)
+        static_tf_publish(cents,quats)
+        trans_cents=[]
+        for i, cent in enumerate(cents):
+            try:
+                trans_map, _ = listener.lookupTransform('/map', 'static' + str(i), rospy.Time(0))
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                
+                continue
+
+            trans_cents.append(trans_map)
+
         print("centroids wrt map" + str(trans_cents))
         if len(trans_cents) !=0:
 
             np.linalg.norm(np.asarray(trans_cents) - trans , axis = 1)
             closest_cent = np.argmin(np.linalg.norm(np.asarray(trans_cents) - trans , axis = 1))
             print("Closest Cent " + str(closest_cent))
-        else: 
-            print("no object found")
+            return 'succ'
+        else:
+            closest_cent=0
             return 'failed'
+
+class Pre_table2(smach.State):
+    
+    def __init__(self):
+        smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
+        self.tries = 0
+
+    def execute(self, userdata):
+        global grasp_above
+        self.tries += 1
+        if self.tries == 3:
+            self.tries = 0 
+            return'tries'
+                
+        goal_x , goal_y, goal_yaw = kl_table2
+
+        a = quats[closest_cent]
+
+        np.rad2deg(tf.transformations.euler_from_quaternion(a))
+        grasp_above=False
+        if (np.abs(np.rad2deg(tf.transformations.euler_from_quaternion(a))[1]) < 1):
+            grasp_above=True
+            print ("grasp above recommended")
+        ##PREGRASPS
+        ####
         move_hand(1)
-        arm.set_joint_value_target(arm_grasp_table)
-        succ=arm.go()
+        if  (grasp_above!=True):#or(np.asarray(cents[closest_cent])[2]>0.9):
+            print 'TABLE PREGRASP'
+            grasp_above=False
+            head.set_named_target('neutral')
+            head.go()
+            move_hand(1)
+            wb= whole_body.get_current_joint_values()
+            wb[0]=goal_y-0.5
+            wb[1]=goal_x
+            wb[2]=np.deg2rad(goal_yaw)
+            wb[3:]=arm_grasp_table
+            wb[3] = .6
+            succ=whole_body.go(wb)
+        else:
+            print ' ABOVE PREGRASP'
+            whole_body.go(wb_pre_table2_above)
+            head.set_named_target('neutral')
+            head.go()
+            move_hand(1)
+            wb= whole_body.get_current_joint_values()
+            wb[0]=goal_y-0.5
+            wb[1]=goal_x
+            wb[2]=np.deg2rad(goal_yaw)
+            wb[3] = .66
+            wb[7] = 0
+
+            succ=whole_body.go(wb)
+        i=closest_cent
+        trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'static'+str(i),rospy.Time(0))
+        hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+        print (trans_hand)
         if succ:
            return 'succ'
-
         else:
             return 'failed'
+
+class Grasp_table2(smach.State):
+
+    def __init__(self):
+        smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
+        self.tries = 0
+
+    def execute(self, userdata):
+        self.tries += 1
+        if self.tries == 5:
+            self.tries = 0 
+            return'tries'
+        #scene.remove_world_object()
+        move_hand(1)
+        i=closest_cent
+        trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'static'+str(i),rospy.Time(0))
+        hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+        print(trans_hand )
+        if grasp_above:    
+            wb= whole_body.get_current_joint_values()
+            wb[0]  =  np.min( (1.3, trans_hand[0]+wb[0] ))
+            wb[1] += trans_hand[1] 
+            wb[3] += -trans_hand[2]+.1
+            
+
+            succ=whole_body.go(wb)
+            
+            #move_hand(1)
+        else:
+
+            wb= whole_body.get_current_joint_values()
+            wb[0] += trans_hand[2] - 0.3
+            wb[1] += trans_hand[1]
+            wb[3] =  0.4#trans_hand[0]
+
+            succ=whole_body.go(wb)
+
+            
+        trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'static'+str(i),rospy.Time(0))
+        hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+        move_hand(1)
+
+        ##GRASP 
+        i=closest_cent
+        if grasp_above: 
+            trans_hand,rot_hand= listener.lookupTransform('/map', 'static'+str(i),rospy.Time(0))
+            hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+            print(trans_hand ,hand_euler)
+
+            trans_hand,np.rad2deg(hand_euler)
+            print(hand_euler[2])
+            a=arm.get_current_joint_values()
+            a[-2]=np.max((-0.5*np.pi , hand_euler[2] +.25*np.pi))
+            arm.go(a)
+            print (a)
+            a=arm.get_current_joint_values()
+            a[0] =.54
+            arm.go(a)
+            
+            wb=whole_body.get_current_joint_values()
+            wb[1]-=.04
+            succ=whole_body.go(wb)
+            
+
+           
+            
+            #move_hand(1)
+        else:
+            trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'static'+str(i),rospy.Time(0))
+            hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+            print(trans_hand ,hand_euler)
+
+            #scene.remove_world_object()
+            wb= whole_body.get_current_joint_values()
+            wb[0] += trans_hand[2] - 0.06
+            wb[1] += trans_hand[1]
+            wb[3] =  0.36#trans_hand[0]
+            succ=whole_body.go(wb)
+            scene.remove_world_object()
+            
+
+            
         
+          
+        trans_hand,rot_hand= listener.lookupTransform('/hand_palm_link', 'static'+str(i),rospy.Time(0))
+        hand_euler=tf.transformations.euler_from_quaternion(rot_hand)
+        print(trans_hand ,hand_euler,succ,wb[0])
+
+        print(trans_hand ,succ,wb[0])
+        if succ:
+            self.tries = 0
+            return 'succ'
+        else:
+            return 'failed'
+
+
+class Post_table2(smach.State):
+
+    def __init__(self):
+        smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
+        self.tries = 0
+    def execute(self, userdata):
+        self.tries += 1
+        if self.tries == 5:
+            self.tries = 0 
+            return'tries'
+        scene.remove_world_object()
+        a=arm.get_current_joint_values()
+        if grasp_above:
+            a[0]=.54
+            arm.go(a)
+        move_hand(0)
+        a=arm.get_current_joint_values()
+        a[0]=.6
+        a[1]=-0.4*np.pi
+        arm.go(a)
+        g = gripper.get_current_joint_values()
+        print g
+        if np.linalg.norm(g - np.asarray(grasped)) > (np.linalg.norm(g - np.asarray(ungrasped))):
+            print ('grasp seems to have failed')
+            return 'failed'
+        else:
+            print('assuming succesful grasp')
+            publish_scene()
+            
+            
+            arm.set_named_target('go')
+            arm.go()
+            head.set_named_target('neutral')
+            head.go()
+            self.tries=0
+            return 'succ'
         
                      
         
@@ -1237,11 +1472,13 @@ if __name__== '__main__':
         smach.StateMachine.add('PRE_TABLE',     Pre_table(),    transitions = {'failed':'PRE_TABLE',    'succ': 'GRASP_TABLE',  'tries':'SCAN_TABLE2'}) 
         smach.StateMachine.add('GRASP_TABLE',   Grasp_table(),  transitions = {'failed':'GRASP_TABLE',  'succ': 'POST_TABLE',   'tries':'SCAN_TABLE2'}) 
         smach.StateMachine.add('POST_TABLE',    Post_table(),   transitions = {'failed':'PRE_TABLE2',  'succ': 'GO_BOX',       'tries':'INITIAL'}) 
-        smach.StateMachine.add("SCAN_TABLE2",   Scan_table2(),  transitions = {'failed':'SCAN_TABLE2',   'succ':'PRE_TABLE2',     'tries':'INITIAL'}) 
-        smach.StateMachine.add('PRE_TABLE2',    Pre_table2(),   transitions = {'failed':'PRE_TABLE2',    'succ': 'GRASP_TABLE',  'tries':'INITIAL'}) 
+        smach.StateMachine.add("SCAN_TABLE2",   Scan_table2(),  transitions = {'failed':'SCAN_TABLE',   'succ':'PRE_TABLE2',     'tries':'INITIAL'}) 
+        smach.StateMachine.add('PRE_TABLE2',    Pre_table2(),   transitions = {'failed':'PRE_TABLE2',    'succ': 'GRASP_TABLE2',  'tries':'INITIAL'}) 
+        smach.StateMachine.add('GRASP_TABLE2',   Grasp_table2(),  transitions = {'failed':'GRASP_TABLE2',  'succ': 'POST_TABLE2',   'tries':'SCAN_TABLE2'}) 
+        smach.StateMachine.add('POST_TABLE2',    Post_table2(),   transitions = {'failed':'PRE_TABLE2',  'succ': 'GO_BOX',       'tries':'INITIAL'}) 
         smach.StateMachine.add('PRE_DRAWER',     Pre_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'GRASP_DRAWER',  'tries':'END'}) 
         smach.StateMachine.add('GRASP_DRAWER',     Grasp_drawer(),  transitions = {'failed':'PRE_DRAWER',    'succ': 'POST_DRAWER',  'tries':'INITIAL'}) 
-        smach.StateMachine.add('POST_DRAWER',     Post_drawer(),  transitions = {'failed':'GRASP_DRAWER',    'succ': 'INITIAL',  'tries':'END'}) 
+        smach.StateMachine.add('POST_DRAWER',     Post_drawer(),  transitions = {'failed':'GRASP_DRAWER',    'succ': 'SCAN_TABLE2',  'tries':'END'}) 
         
 
         
