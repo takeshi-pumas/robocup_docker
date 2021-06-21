@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from utils_takeshi import *
-
+from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 ########## Functions for takeshi states ##########
 class Proto_state(smach.State):
     def __init__(self):
@@ -404,9 +404,8 @@ def publish_scene():
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
     static_transformStamped.transform.rotation.w = 1    
-
     tf_static_broadcaster.sendTransform(static_transformStamped)
-    ##FIXING TF TO MAP ( ODOM REALLY)    
+
     static_transformStamped.header.stamp = rospy.Time.now()
     static_transformStamped.header.frame_id = "map"
     static_transformStamped.child_frame_id = "Box1" 
@@ -417,18 +416,20 @@ def publish_scene():
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
     static_transformStamped.transform.rotation.w = 1    
-
     tf_static_broadcaster.sendTransform(static_transformStamped)  
+
     static_transformStamped.header.stamp = rospy.Time.now()
     static_transformStamped.header.frame_id = "map"
     static_transformStamped.child_frame_id = "Drawer_left" 
-    static_transformStamped.transform.translation.x = .45
-    static_transformStamped.transform.translation.y = -0.33
-    static_transformStamped.transform.translation.z = .28
+    static_transformStamped.transform.translation.x = .48
+    static_transformStamped.transform.translation.y = -0.344
+    static_transformStamped.transform.translation.z = .27
     static_transformStamped.transform.rotation.x = 0    
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
     static_transformStamped.transform.rotation.w = 1    
+    tf_static_broadcaster.sendTransform(static_transformStamped)  
+
 
     return True
 
@@ -548,7 +549,8 @@ class Initial(smach.State):
         arm.set_named_target('go')
         arm.go()
         head.set_named_target('neutral')
-        succ = head.go()             
+        succ = head.go()   
+        publish_scene()          
         if succ:
             return 'succ'
         else:
@@ -572,7 +574,11 @@ class Scan_floor(smach.State):
             print('lets try table now')
             return'tries'
         global cents, rot, trans
-        goal_x , goal_y, goal_yaw = kl_mess1        
+        goal_x , goal_y, goal_yaw = kl_mess1 
+        
+        arm.set_named_target('go')
+        arm.go()      
+        move_hand(0)
         succ = move_base_goal(goal_x, goal_y, goal_yaw)        
         head_val = head.get_current_joint_values()
         head_val[0] = np.deg2rad(0)
@@ -767,11 +773,11 @@ class Pre_deliver(smach.State):
         self.tries=0
     def execute(self,userdata):
         publish_scene()
-        print userdata.delivery_destination
+        print
         if  (userdata.delivery_destination)=="Tray_A":
-            
+            userdata.delivery_destination_out="Box1"
             wb=wb_place_tray_A
-        if  (userdata.delivery_destination)=="Box1":
+        else:
 
             wb=wb_place_Box1   
         self.tries+=1
@@ -806,8 +812,7 @@ class Deliver(smach.State):
         self.tries=0
     def execute(self,userdata):
         
-        print ("delivering to ",userdata.delivery_destination)       
-
+        print ("delivering to userdata.delivery_destination")       
         self.tries+=1
         print(self.tries,'out of 5')
         if self.tries==5:
@@ -844,9 +849,6 @@ class Deliver(smach.State):
             arm.go()
             head.set_named_target('neutral')
             head.go()
-            if userdata.delivery_destination=='Tray_A':
-                userdata.delivery_destination_out= 'Box1'
-
             return 'succ'
         else:
             return 'failed'
@@ -1417,7 +1419,208 @@ class Post_drawer(smach.State):
             return 'succ'
         else:
             return 'failed'
+class OpenDrawer(smach.State):
+    def __init__(self, lis, tf_stat, whole_body, arm, gripper, head, move_base_goal):
+        smach.State.__init__(self,outcomes=['succ','failed'])
+        #self.client = dynamic_reconfigure.client.Client('/move_base/local_costmap/obstacles', timeout=30)
+        self.listener = lis
+        self.tf_static_broadcaster = tf_stat
 
+        self.whole_body = whole_body
+        self.arm = arm
+        self.gripper = gripper
+        self.head = head
+
+        self.move_base_goal = move_base_goal
+
+    def control_arm(self, value):
+        while True:
+            try:
+                result = self.whole_body.go(value)
+                if result:
+                    break
+            except:
+                #traceback.print_exc()
+                print('fail')
+                return 'failed'
+
+    def execute(self, useradata):
+        #move_arm_init()
+        
+        """print drawer_list
+                                top_d_index = np.unravel_index(np.argmax(drawer_list), drawer_list.shape)[0]
+                                drawer_list[1], drawer_list[top_d_index] = drawer_list[top_d_index], drawer_list[1].copy()
+                        
+                                bottom_r_d_index = np.argmax(drawer_list[:,0])
+                                drawer_list[2], drawer_list[bottom_r_d_index] = drawer_list[bottom_r_d_index], drawer_list[2].copy()
+                                print ('drawer_list', drawer_list)"""
+        publish_scene()
+        scene.remove_world_object('drawers')
+
+        drawers=['Drawer_low','Drawer_high','Drawer_left']
+        drawer_list= []
+        for drawer in drawers:
+            trans , rot = listener.lookupTransform('map', drawer, rospy.Time(0))
+            drawer_list.append(trans)
+
+        print ('drawer_list + fixed shelf tfs', drawer_list)
+        for i, drawer in enumerate(drawer_list):
+            print i
+            static_transformStamped = TransformStamped()
+            static_transformStamped.header.stamp = rospy.Time.now()
+            static_transformStamped.header.frame_id = "map"
+            static_transformStamped.child_frame_id = "drawer"+str(i)
+            static_transformStamped.transform.translation.x = drawer[0]
+            static_transformStamped.transform.translation.y = drawer[1]
+            static_transformStamped.transform.translation.z = drawer[2]
+            q = tf.transformations.quaternion_from_euler(1.57, 0, 0)
+            static_transformStamped.transform.rotation.x = q[0]
+            static_transformStamped.transform.rotation.y = q[1]
+            static_transformStamped.transform.rotation.z = q[2]
+            static_transformStamped.transform.rotation.w = q[3]
+            self.tf_static_broadcaster.sendTransform(static_transformStamped)
+
+        print "-----------------------------------------"
+
+        for i in range(len(drawer_list)):
+            #move_hand(1)
+            self.gripper.set_joint_value_target("hand_motor_joint", 1)
+            self.gripper.go()
+            rospy.sleep(6)
+
+            #move_arm_neutral()
+            self.arm.set_named_target('neutral')
+            self.arm.go()
+
+            try:
+                """ for tf2
+                hand_base_diff = tf_buffer.lookup_transform('hand_palm_link', 'base_footprint',
+                                                            rospy.Time.now(),
+                                                            rospy.Duration(1))
+                """
+                now_time = rospy.Time.now()
+                self.listener.waitForTransform("hand_palm_link", "base_footprint", now_time, rospy.Duration(1.0))
+                _trans, _rot = self.listener.lookupTransform('hand_palm_link', 'base_footprint', now_time)
+                hand_base_diff = TransformStamped()
+                hand_base_diff.header.stamp = now_time
+                hand_base_diff.header.frame_id = 'hand_palm_link'
+                hand_base_diff.child_frame_id = 'base_footprint'
+                hand_base_diff.transform.translation.x = _trans[0]
+                hand_base_diff.transform.translation.y = _trans[1]
+                hand_base_diff.transform.translation.z = _trans[2]
+                hand_base_diff.transform.rotation.x = _rot[0]
+                hand_base_diff.transform.rotation.y = _rot[1]
+                hand_base_diff.transform.rotation.z = _rot[2]
+                hand_base_diff.transform.rotation.w = _rot[3]
+
+            except:
+                traceback.print_exc()
+            print hand_base_diff.transform.translation
+
+            self.move_base_goal(drawer_list[i][0], 0.50, -90) #0.45
+            #self.move_base_goal(drawer_list[i][0]-hand_base_diff.transform.translation.y, 0.50, -90) #0.45
+
+            """for tf2
+            trans = tf_buffer.lookup_transform('map', 'arm_lift_link',
+                                               rospy.Time.now(),
+                                               rospy.Duration(1))
+            """
+            now_time = rospy.Time.now()
+            self.listener.waitForTransform("map", "arm_lift_link", now_time, rospy.Duration(1.0))
+            _trans, _rot = self.listener.lookupTransform('map', 'arm_lift_link', now_time)
+            trans = TransformStamped()
+            trans.header.stamp = now_time
+            trans.header.frame_id = 'map'
+            trans.child_frame_id = 'arm_lift_link'
+            trans.transform.translation.x = _trans[0]
+            trans.transform.translation.y = _trans[1]
+            trans.transform.translation.z = _trans[2]
+            trans.transform.rotation.x = _rot[0]
+            trans.transform.rotation.y = _rot[1]
+            trans.transform.rotation.z = _rot[2]
+            trans.transform.rotation.w = _rot[3]
+
+            z_diff = drawer_list[i][2] - trans.transform.translation.z
+            print z_diff
+            if z_diff < 0:
+                bottom_line = math.sqrt(0.345**2 - z_diff**2)
+                ang = math.atan2(z_diff, bottom_line)
+                self.arm.set_joint_value_target('arm_lift_joint', 0.05)
+                self.arm.set_joint_value_target('wrist_flex_joint', -ang)
+                self.arm.set_joint_value_target('arm_flex_joint', -1.57+ang)
+                self.arm.set_joint_value_target('wrist_roll_joint', -1.57)
+                self.arm.go()
+                offset = 0.04
+                rospy.loginfo("draw bottom drawer")
+            else:
+                self.arm.set_joint_value_target('arm_lift_joint', z_diff+0.05)
+                self.arm.set_joint_value_target('wrist_flex_joint', 0)
+                self.arm.set_joint_value_target('arm_flex_joint', -1.57)
+                self.arm.set_joint_value_target('wrist_roll_joint', -1.57)
+                self.arm.go()
+                offset = 0.04
+                rospy.loginfo("draw top drawer")
+
+            trans = None
+            while trans is None:
+                try:
+                    """ for tf2
+                    trans = tf_buffer.lookup_transform('hand_palm_link', 'drawer'+str(i), rospy.Time.now())
+                    """
+                    now_time = rospy.Time.now()
+                    self.listener.waitForTransform("hand_palm_link", "drawer"+str(i), now_time, rospy.Duration(1.0))
+                    _trans, _rot = self.listener.lookupTransform('hand_palm_link', 'drawer'+str(i), now_time)
+                    trans = TransformStamped()
+                    trans.header.stamp = now_time
+                    trans.header.frame_id = 'hand_palm_link'
+                    trans.child_frame_id = 'drawer'+str(i)
+                    trans.transform.translation.x = _trans[0]
+                    trans.transform.translation.y = _trans[1]
+                    trans.transform.translation.z = _trans[2]
+                    trans.transform.rotation.x = _rot[0]
+                    trans.transform.rotation.y = _rot[1]
+                    trans.transform.rotation.z = _rot[2]
+                    trans.transform.rotation.w = _rot[3]
+
+                except:
+                    traceback.print_exc()
+            print trans
+
+            #approach handle
+            current = self.whole_body.get_current_joint_values()
+            #current[0] = current[0] - trans.transform.translation.z + 0.04 # map y +0.04 for default
+            current[0] = current[0] - trans.transform.translation.z + offset # y of map frame +0.04 for default
+            current[1] = current[1] + trans.transform.translation.x + 0.02
+            self.control_arm(current)
+            time.sleep(1)
+            #move_hand(0) #close
+            self.gripper.set_joint_value_target("hand_motor_joint", 0)
+            self.gripper.go()
+            rospy.sleep(6)
+
+            #draw drawer
+            current = self.whole_body.get_current_joint_values()
+            current[0] = 0.63 # map y
+            self.control_arm(current)
+            time.sleep(1)
+            #move_hand(1)
+            self.gripper.set_joint_value_target("hand_motor_joint", 1)
+            self.gripper.go()
+            rospy.sleep(6)
+
+            #release
+            current = self.whole_body.get_current_joint_values()
+            current[0] = 0.7 # map y
+            self.control_arm(current)
+            #move_arm_neutral()
+            self.arm.set_named_target('neutral')
+            self.arm.go()
+
+            if i==3:
+                break
+
+
+        return 'succ'
 
 
 
@@ -1443,7 +1646,7 @@ def init(node_name):
     static_transformStamped.child_frame_id = "Drawer_high" 
     static_transformStamped.transform.translation.x = 0.14
     static_transformStamped.transform.translation.y = -0.344
-    static_transformStamped.transform.translation.z = 0.57
+    static_transformStamped.transform.translation.z = 0.52
     static_transformStamped.transform.rotation.x = 0    
     static_transformStamped.transform.rotation.y = 0    
     static_transformStamped.transform.rotation.z = 0    
@@ -1466,8 +1669,9 @@ if __name__== '__main__':
         ## SMACH WITH NO DRAWER GRASPING ( UNCOMMMENT LINE FOR DRAWER)
         rospy.loginfo('NO DRAWER')
         #State machine for grasping on Floor
-        
-        smach.StateMachine.add("INITIAL",       Initial(),      transitions = {'failed':'INITIAL',      'succ':'SCAN_FLOOR',    'tries':'INITIAL'}) 
+        smach.StateMachine.add("INITIAL",       Initial(),      transitions = {'failed':'INITIAL',      'succ':'OPENDRAWER',    'tries':'INITIAL'}) 
+        smach.StateMachine.add("OPENDRAWER",       OpenDrawer(listener, tf_static_broadcaster, whole_body, arm, gripper, head, move_base_goal),      transitions = {'succ':'SCAN_FLOOR', 'failed':'SCAN_FLOOR'})
+        #smach.StateMachine.add("INITIAL",       Initial(),      transitions = {'failed':'INITIAL',      'succ':'PRE_DRAWER',    'tries':'INITIAL'}) 
         smach.StateMachine.add("SCAN_FLOOR",    Scan_floor(),   transitions = {'failed':'SCAN_FLOOR',   'succ':'PRE_FLOOR',     'tries':'SCAN_TABLE','change':'SCAN_TABLE2'}) 
         smach.StateMachine.add('PRE_FLOOR',     Pre_floor(),    transitions = {'failed':'PRE_FLOOR',    'succ': 'GRASP_FLOOR',  'tries':'SCAN_TABLE'},remapping={'counter_in':'sm_counter','counter_out':'sm_counter'}) 
         smach.StateMachine.add('GRASP_FLOOR',   Grasp_floor(),  transitions = {'failed':'SCAN_FLOOR',  'succ': 'POST_FLOOR',   'tries':'INITIAL'}) 
