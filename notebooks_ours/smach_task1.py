@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from utils_takeshi import *
+import datetime
 
 ########## Functions for takeshi states ##########
 class Proto_state(smach.State):
@@ -79,17 +80,17 @@ def rot_to_euler(R):
        eul3 = m.atan2(sp*R.item(0,2)-cp*R.item(1,2),cp*R.item(1,1)-sp*R.item(0,1))
 
     return np.asarray((eul1,eul2,eul3))
-def pca_xyz(xyz):
-    quats=[]
-    for i in range( len(xyz)):
-        pca= PCA(n_components=3).fit(xyz[i])
-        vec0= pca.components_[0,:]
-        vec1= pca.components_[1,:]
-        vec2= pca.components_[2,:]
-        R=pca.components_
-        euler=rot_to_euler(R)
-        quats.append(tf.transformations.quaternion_from_euler(euler[0],euler[1],euler[2]))
-    return quats
+#def pca_xyz(xyz):
+#    quats=[]
+#    for i in range( len(xyz)):
+#        pca= PCA(n_components=3).fit(xyz[i])
+#        vec0= pca.components_[0,:]
+#        vec1= pca.components_[1,:]
+#        vec2= pca.components_[2,:]
+#        R=pca.components_
+#        euler=rot_to_euler(R)
+#        quats.append(tf.transformations.quaternion_from_euler(euler[0],euler[1],euler[2]))
+#    return quats
 
 
 def seg_pca(lower=2000,higher=50000,reg_ly=0,reg_hy=1000): 
@@ -388,8 +389,8 @@ def publish_scene():
     add_object("close_wall", [4.0, 0.2, 0.2], [1.1, -0.5, 0.0],  [0,0.0,0.0 ,1/np.pi])
     add_object("far_wall",   [4.0, 0.2, 0.2], [1.1, 5.0, 0.0],  [0,0.0,0.0 ,1/np.pi])
     
-    add_transform("Tray_A", [1.665, -0.59, 0.4], [0, 0, 0, 1])
-    add_transform("Tray_B", [1.97, -0.59, 0.4], [0, 0, 0, 1])
+    add_transform("Tray_A", [1.665, -0.59, 0.5], [0, 0, 0, 1])
+    add_transform("Tray_B", [1.97, -0.59, 0.5], [0, 0, 0, 1])
 
     static_transformStamped=TransformStamped()
 
@@ -538,8 +539,10 @@ class Initial(smach.State):
         
     def execute(self,userdata):
 
-        
-        rospy.loginfo('STATE : Going to known location Mess 1')
+
+
+
+        rospy.loginfo('STATE : Initialization')
         print('Try',self.tries,'of 5 attepmpts') 
         self.tries+=1
         scene.remove_world_object()
@@ -562,17 +565,25 @@ class Initial(smach.State):
 
 class Scan_floor(smach.State):
     def __init__(self):
-        smach.State.__init__(self,outcomes=['succ','failed','tries','change'])
+        smach.State.__init__(self,outcomes=['succ','failed','tries','change'],input_keys=['timer_in'],output_keys=['timer_out'])
         self.tries=0
     def execute(self,userdata):
+
         #self.tries+=1
+        
         print(self.tries,'of 3')
         if self.tries==3:
             self.tries=0 
             print('lets try table now')
             return'tries'
-        global cents, rot, trans
+        global cents, rot, trans , end_time
         goal_x , goal_y, goal_yaw = kl_mess1        
+        now= datetime.datetime.now()
+        if userdata.timer_in:
+            end_time=now + datetime.timedelta(minutes = 5)
+            userdata.timer_out=False
+            rospy.loginfo('Started moving at '+ str (now))
+        print ('Time ', now, 'will end at ', end_time)
         succ = move_base_goal(goal_x, goal_y, goal_yaw)        
         head_val = head.get_current_joint_values()
         head_val[0] = np.deg2rad(0)
@@ -587,8 +598,8 @@ class Scan_floor(smach.State):
 
 
         if len (cents!=0):
-            quats=pca_xyz(xyz)
-            static_tf_publish(cents,quats)
+            #quats=pca_xyz(xyz)
+            static_tf_publish(cents)
             self.tries=0 
             return 'succ'
 
@@ -604,6 +615,12 @@ class Pre_floor(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['counter_in'],output_keys=['counter_out'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
+            
         self.tries+=1
         if self.tries==3:
             self.tries=0 
@@ -663,20 +680,13 @@ class Pre_floor(smach.State):
         wb = whole_body.get_current_joint_values()
         wb[0] += trans_hand[2] -0.1
         wb[1] += trans_hand[1]-.05
-        try:
-            succ = whole_body.go(wb)
-        except MoveItCommanderException:
-            return  'failed'
         trans_hand, rot_hand = listener.lookupTransform('/hand_palm_link', 'static' + str(closest_cent), rospy.Time(0))
         wb = whole_body.get_current_joint_values()
         wb[0] += trans_hand[2] -0.05
         wb[1] += trans_hand[1]
-        try:
-            succ = whole_body.go(wb)
-        except MoveItCommanderException:
-            return  'failed'
         succ = whole_body.go(wb)
-
+      
+        
         if succ:
             return 'succ'
         else:
@@ -692,6 +702,11 @@ class Grasp_floor(smach.State):
     def execute(self,userdata):
         global trans_hand
         move_hand(1)
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         #self.tries+=1
         #if self.tries==3:
         #    arm.set_named_target('go')
@@ -729,6 +744,11 @@ class Post_floor(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         print(self.tries,'out of 2')
         if self.tries==2:
@@ -766,14 +786,22 @@ class Pre_deliver(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['delivery_destination'],output_keys=['delivery_destination_out'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         publish_scene()
         print userdata.delivery_destination
         if  (userdata.delivery_destination)=="Tray_A":
-            
             wb=wb_place_tray_A
-        if  (userdata.delivery_destination)=="Box1":
 
+        if  (userdata.delivery_destination)=="Tray_B":
+            wb=wb_place_tray_B
+
+        if  (userdata.delivery_destination)=="Box1":
             wb=wb_place_Box1   
+
         self.tries+=1
         print(self.tries,'out of 5')
         if self.tries==5:
@@ -805,6 +833,11 @@ class Deliver(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['delivery_destination'],output_keys=['delivery_destination_out'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         
         print ("delivering to ",userdata.delivery_destination)       
 
@@ -845,6 +878,8 @@ class Deliver(smach.State):
             head.set_named_target('neutral')
             head.go()
             if userdata.delivery_destination=='Tray_A':
+                userdata.delivery_destination_out= 'Tray_B'
+            if userdata.delivery_destination=='Tray_B':
                 userdata.delivery_destination_out= 'Box1'
 
             return 'succ'
@@ -894,6 +929,11 @@ class Scan_table(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['counter_in'],output_keys=['counter_out'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         if self.tries==3:
             self.tries=0 
@@ -940,6 +980,11 @@ class Pre_table(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'],input_keys=['global_counter'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         if self.tries==3:
             self.tries=0 
@@ -997,6 +1042,11 @@ class Grasp_table(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         if self.tries==5:
             self.tries=0 
@@ -1038,6 +1088,11 @@ class Post_table(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         if self.tries==5:
             self.tries=0 
@@ -1069,6 +1124,11 @@ class Scan_table2(smach.State):
         self.tries = 0
 
     def execute(self, userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries += 1
         if self.tries == 3:
             self.tries = 0 
@@ -1115,8 +1175,8 @@ class Scan_table2(smach.State):
         publish_scene()
         trans , rot = listener.lookupTransform('/map', '/head_rgbd_sensor_gazebo_frame', rospy.Time(0))
         cents, xyz = seg_pca(2000,30000,table_region[0],table_region[1])
-        quats=pca_xyz(xyz)
-        static_tf_publish(cents,quats)
+        #quats=pca_xyz(xyz)
+        static_tf_publish(cents)
         trans_cents=[]
         for i, cent in enumerate(cents):
             try:
@@ -1145,6 +1205,11 @@ class Pre_table2(smach.State):
         self.tries = 0
 
     def execute(self, userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         global grasp_above
         self.tries += 1
         if self.tries == 3:
@@ -1153,16 +1218,17 @@ class Pre_table2(smach.State):
                 
         goal_x , goal_y, goal_yaw = kl_table2
         publish_scene()
-        a = quats[closest_cent]
-
-        np.rad2deg(tf.transformations.euler_from_quaternion(a))
+        #a = quats[closest_cent]
         grasp_above=False
-        if (np.abs(np.rad2deg(tf.transformations.euler_from_quaternion(a))[1]) < 1):
-            grasp_above=True
-            print ("grasp above recommended")
+        #np.rad2deg(tf.transformations.euler_from_quaternion(a))
+        #grasp_above=False
+        #if (np.abs(np.rad2deg(tf.transformations.euler_from_quaternion(a))[1]) < 1):
+        #    grasp_above=True
+        #    print ("grasp above recommended")
         ##PREGRASPS
         ####
         move_hand(1)
+
         if  (grasp_above!=True):#or(np.asarray(cents[closest_cent])[2]>0.9):
             print 'TABLE PREGRASP'
             grasp_above=False
@@ -1208,6 +1274,11 @@ class Grasp_table2(smach.State):
         self.tries = 0
 
     def execute(self, userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries += 1
         if self.tries == 5:
             self.tries = 0 
@@ -1302,6 +1373,11 @@ class Post_table2(smach.State):
         smach.State.__init__(self, outcomes = ['succ', 'failed', 'tries'])
         self.tries = 0
     def execute(self, userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries += 1
         if self.tries == 5:
             self.tries = 0 
@@ -1341,6 +1417,11 @@ class Pre_drawer(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         self.tries+=1
         goal_x , goal_y, goal_yaw = kl_drawers 
         ### A KNOWN LOCATION NAMED DRAWERS ( LOCATED utils_takeshi.py)       
@@ -1364,6 +1445,11 @@ class Grasp_drawer(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         publish_scene()
         self.tries+=1
         ## BY COMPARING RELATIVE POSITION BETWEEN HAND AND DRAWER A TWO STAGE SMALL ADJUSTMENTS MOVEMENT IS PROPOSED
@@ -1396,6 +1482,11 @@ class Post_drawer(smach.State):
         smach.State.__init__(self,outcomes=['succ','failed','tries'])
         self.tries=0
     def execute(self,userdata):
+        now= datetime.datetime.now()
+        if now > end_time:
+            print ('5 mins up')
+            rospy.loginfo('5 mins up')
+            return  0
         publish_scene()
         self.tries+=1
         move_hand(0)
@@ -1461,6 +1552,7 @@ if __name__== '__main__':
     init("takeshi_smach")
     sm = smach.StateMachine(outcomes = ['END'])     #State machine, final state "END"
     sm.userdata.sm_counter = 0
+    sm.userdata.sm_timer = True
     sm.userdata.delivery_dest = "Tray_A"
     with sm:
         ## SMACH WITH NO DRAWER GRASPING ( UNCOMMMENT LINE FOR DRAWER)
@@ -1468,7 +1560,7 @@ if __name__== '__main__':
         #State machine for grasping on Floor
         
         smach.StateMachine.add("INITIAL",       Initial(),      transitions = {'failed':'INITIAL',      'succ':'SCAN_FLOOR',    'tries':'INITIAL'}) 
-        smach.StateMachine.add("SCAN_FLOOR",    Scan_floor(),   transitions = {'failed':'SCAN_FLOOR',   'succ':'PRE_FLOOR',     'tries':'SCAN_TABLE','change':'SCAN_TABLE2'}) 
+        smach.StateMachine.add("SCAN_FLOOR",    Scan_floor(),   transitions = {'failed':'SCAN_FLOOR',   'succ':'PRE_FLOOR',     'tries':'SCAN_TABLE','change':'SCAN_TABLE2'},remapping={'timer_in':'sm_timer','timer_out':'sm_timer'}) 
         smach.StateMachine.add('PRE_FLOOR',     Pre_floor(),    transitions = {'failed':'PRE_FLOOR',    'succ': 'GRASP_FLOOR',  'tries':'SCAN_TABLE'},remapping={'counter_in':'sm_counter','counter_out':'sm_counter'}) 
         smach.StateMachine.add('GRASP_FLOOR',   Grasp_floor(),  transitions = {'failed':'SCAN_FLOOR',  'succ': 'POST_FLOOR',   'tries':'INITIAL'}) 
         smach.StateMachine.add('POST_FLOOR',    Post_floor(),   transitions = {'failed':'GRASP_FLOOR',  'succ': 'PRE_DELIVER',       'tries':'SCAN_FLOOR'}) 

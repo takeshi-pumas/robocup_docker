@@ -2,6 +2,7 @@
 
 from utils_takeshi import *
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
+import datetime
 ########## Functions for takeshi states ##########
 class Proto_state(smach.State):
     def __init__(self):
@@ -568,6 +569,8 @@ class Scan_floor(smach.State):
         self.tries=0
     def execute(self,userdata):
         now= datetime.datetime.now()
+        rospy.loginfo('Time now'+str(now)+'will en at '+str(end_time))
+
         if now > end_time:
             print ('5 mins up')
             rospy.loginfo('5 mins up')
@@ -1546,15 +1549,11 @@ class OpenDrawer(smach.State):
         for drawer in drawers:
             trans , rot = listener.lookupTransform('map', drawer, rospy.Time(0))
             drawer_list.append(trans) 
-        now= datetime.datetime.now()
-        end_time=now + datetime.timedelta(minutes = 5)
         
-        rospy.loginfo('Started moving at '+ str (now))
-        print ('Time ', now, 'will end at ', end_time)
 
         print ('drawer_list + fixed shelf tfs', drawer_list)
         for i, drawer in enumerate(drawer_list):
-            print i
+            #print i
             static_transformStamped = TransformStamped()
             static_transformStamped.header.stamp = rospy.Time.now()
             static_transformStamped.header.frame_id = "map"
@@ -1570,6 +1569,7 @@ class OpenDrawer(smach.State):
             self.tf_static_broadcaster.sendTransform(static_transformStamped)
 
         print "-----------------------------------------"
+      
 
         for i in range(len(drawer_list)):
             #move_hand(1)
@@ -1582,6 +1582,12 @@ class OpenDrawer(smach.State):
             #move_arm_neutral()
             self.arm.set_named_target('neutral')
             self.arm.go()
+            now= datetime.datetime.now()
+            end_time=now + datetime.timedelta(minutes = 5)
+            
+            rospy.loginfo('Started moving at '+ str (now)+'will end at'+str(end_time))
+            print ('Time ', now, 'will end at ', end_time)
+            print "-----------------------------------------"
 
             try:
                 """ for tf2
@@ -1609,6 +1615,7 @@ class OpenDrawer(smach.State):
             print hand_base_diff.transform.translation
 
             self.move_base_goal(drawer_list[i][0], 0.50, -90) #0.45
+            
             #self.move_base_goal(drawer_list[i][0]-hand_base_diff.transform.translation.y, 0.50, -90) #0.45
 
             """for tf2
@@ -1651,7 +1658,7 @@ class OpenDrawer(smach.State):
                 self.arm.go()
                 offset = 0.04
                 rospy.loginfo("draw top drawer")
-
+            
             trans = None
             while trans is None:
                 try:
