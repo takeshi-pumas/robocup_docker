@@ -3,11 +3,11 @@
 from utils import *
 import moveit_msgs.msg
 import smach
-import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import math as m
 import sys
 from xml.dom import minidom
+import datetime
 
 
 ##### Publishers #####

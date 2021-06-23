@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from utils_takeshi import *
-import datetime
 
 ########## Functions for takeshi states ##########
 class Proto_state(smach.State):
